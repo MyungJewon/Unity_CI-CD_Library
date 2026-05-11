@@ -1,0 +1,93 @@
+using UnityEditor;
+using UnityEditor.Build.Reporting;
+using System;
+using System.IO;
+using UnityEngine;
+
+public static class BuildScript
+{
+    public static void Build()
+    {
+        string platform = GetArg("-platform");
+        string output   = GetArg("-output");
+
+        if (string.IsNullOrEmpty(platform) || string.IsNullOrEmpty(output))
+        {
+            Console.WriteLine("[BuildScript] ERROR: -platform and -output are required.");
+            EditorApplication.Exit(1);
+            return;
+        }
+
+        string[] scenes = GetAllScenePaths();
+        if (scenes.Length == 0)
+        {
+            Console.WriteLine("[BuildScript] ERROR: No scenes found in build settings.");
+            EditorApplication.Exit(1);
+            return;
+        }
+
+        BuildPlayerOptions options = new BuildPlayerOptions
+        {
+            scenes  = scenes,
+            options = BuildOptions.None,
+        };
+
+        switch (platform.ToLower())
+        {
+            case "android":
+                Directory.CreateDirectory(Path.Combine(output, "Android"));
+                options.target      = BuildTarget.Android;
+                options.locationPathName = Path.Combine(output, "Android", "build.apk");
+                break;
+
+            case "ios":
+                Directory.CreateDirectory(Path.Combine(output, "iOS"));
+                options.target      = BuildTarget.iOS;
+                options.locationPathName = Path.Combine(output, "iOS", "build");
+                break;
+
+            default:
+                Console.WriteLine($"[BuildScript] ERROR: Unknown platform '{platform}'. Use 'android' or 'ios'.");
+                EditorApplication.Exit(1);
+                return;
+        }
+
+        Console.WriteLine($"[BuildScript] Starting {platform} build → {options.locationPathName}");
+
+        BuildReport  report  = BuildPipeline.BuildPlayer(options);
+        BuildSummary summary = report.summary;
+
+        if (summary.result == BuildResult.Succeeded)
+        {
+            Console.WriteLine($"[BuildScript] Build succeeded. Output: {options.locationPathName}");
+            EditorApplication.Exit(0);
+        }
+        else
+        {
+            Console.WriteLine($"[BuildScript] Build FAILED. Result: {summary.result}");
+            EditorApplication.Exit(1);
+        }
+    }
+
+    private static string[] GetAllScenePaths()
+    {
+        var scenes = new System.Collections.Generic.List<string>();
+        foreach (var scene in EditorBuildSettings.scenes)
+        {
+            if (scene.enabled)
+                scenes.Add(scene.path);
+        }
+        return scenes.ToArray();
+    }
+
+    private static string GetArg(string name)
+    {
+        string[] args = Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i] == name)
+                return args[i + 1];
+        }
+        return null;
+    }
+}
