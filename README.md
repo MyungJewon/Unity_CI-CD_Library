@@ -13,7 +13,7 @@
 특정 버전을 고정하려면 태그를 명시합니다.
 
 ```json
-"com.dfunity.ci": "https://github.com/MyungJewon/Unity_CI-CD_Library.git#v0.0.4"
+"com.dfunity.ci": "https://github.com/MyungJewon/Unity_CI-CD_Library.git#v0.1.1"
 ```
 
 ## 버전 특이사항
@@ -21,7 +21,8 @@
 - v0.0.1: 첫 커밋
 - v0.0.2: README 추가
 - v0.0.3: SSH 기반 원격 빌드 서버 구조로 전환
-- v0.0.4: 사용자 ID + 빌드 시간 기반 출력 폴더, 로그 영문화
+- v0.1.0: 사용자 ID + 빌드 시간 기반 출력 폴더, 로그 영문화
+- v0.1.1: 빌드PC의 빌드 수행정 git reset
 
 ## 요구사항
 
