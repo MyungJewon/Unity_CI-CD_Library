@@ -13,7 +13,7 @@
 특정 버전을 고정하려면 태그를 명시합니다.
 
 ```json
-"com.dfunity.ci": "https://github.com/MyungJewon/Unity_CI-CD_Library.git#v0.1.1"
+"com.dfunity.ci": "https://github.com/MyungJewon/Unity_CI-CD_Library.git#v0.1.3"
 ```
 
 ## 버전 특이사항
@@ -24,6 +24,7 @@
 - v0.1.0: 사용자 ID + 빌드 시간 기반 출력 폴더, 로그 영문화
 - v0.1.1: 빌드PC의 빌드 수행전 git reset
 - v0.1.2: Windows 빌드 서버 지원, Windows(StandaloneWindows64) 플랫폼 추가
+- v0.1.3: OpenXR 첫 실행 시 설정 미로드 문제에 대한 자동 재시도 추가
 
 ## 요구사항
 
