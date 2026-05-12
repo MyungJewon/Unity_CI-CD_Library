@@ -115,6 +115,24 @@ set +e
 EXIT_CODE=$?
 set -e
 
+# OpenXR 첫 실행 시 설정 미로드 문제 — 자동 재시도
+if [[ $EXIT_CODE -ne 0 ]] && grep -q "OpenXR Settings found in project but not yet loaded" "$LOG_FILE" 2>/dev/null; then
+    echo "[CI] OpenXR settings not loaded on first run — retrying..."
+    LOG_FILE="$LOG_DIR/${PLATFORM}_build_retry.log"
+    set +e
+    "$UNITY_BIN" \
+        -batchmode \
+        -nographics \
+        -projectPath "$PROJECT_PATH" \
+        -executeMethod BuildScript.Build \
+        -platform "$PLATFORM" \
+        -output "$OUTPUT_PATH" \
+        -logFile "$LOG_FILE" \
+        -quit
+    EXIT_CODE=$?
+    set -e
+fi
+
 # ── 결과 출력 ─────────────────────────────────────────────────────────────────
 if [[ $EXIT_CODE -eq 0 ]]; then
     echo "[CI] Build succeeded. Log: $LOG_FILE"
