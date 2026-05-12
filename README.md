@@ -88,3 +88,7 @@ git config --global url."git@github.com:".insteadOf "https://<github-username>@g
 3. `ProjectSettings/ProjectVersion.txt`에서 Unity 버전을 감지합니다.
 4. `BuildScript.cs`를 `Assets/Editor/`에 임시 주입 후 Unity를 `-batchmode`로 실행합니다.
 5. 빌드 완료 후 주입한 파일을 자동으로 삭제합니다.
+
+## 주의 사항
+
+이 CI툴은 Git과 연동하여 사용하는것을 전제로 제작되어 빌드를 수행하기전 pull을 수행합니다. 따라서 로컬 작업 내용을 commit하지 않으면 빌드pc에는 반영되지 않습니다.
