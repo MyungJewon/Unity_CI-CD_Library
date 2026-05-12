@@ -9,10 +9,13 @@ using UnityEngine;
 
 public class CIBuildWindow : EditorWindow
 {
-    enum Platform { Android, iOS }
+    enum Platform { Android, iOS, Windows }
+    enum ServerOS { Mac, Windows }
+
     string   _projectPath = "";
     string   _outputPath  = "";
     Platform _platform    = Platform.Android;
+    ServerOS _serverOs    = ServerOS.Mac;
     bool     _isBuilding  = false;
     Vector2  _logScroll;
     string   _logText     = "";
@@ -37,7 +40,8 @@ public class CIBuildWindow : EditorWindow
     {
         _projectPath = EditorPrefs.GetString("CIBuild_ProjectPath", "");
         _outputPath  = EditorPrefs.GetString("CIBuild_OutputPath",  "");
-        _platform    = (Platform)EditorPrefs.GetInt("CIBuild_Platform", 0);
+        _platform    = (Platform)EditorPrefs.GetInt("CIBuild_Platform",  0);
+        _serverOs   = (ServerOS)EditorPrefs.GetInt("CIBuild_ServerOs",  0);
         _sshHost    = EditorPrefs.GetString("CIBuild_SshHost",    "");
         _sshUser    = EditorPrefs.GetString("CIBuild_SshUser",    "");
         _sshKeyPath = EditorPrefs.GetString("CIBuild_SshKeyPath", "");
@@ -49,7 +53,8 @@ public class CIBuildWindow : EditorWindow
     {
         EditorPrefs.SetString("CIBuild_ProjectPath", _projectPath);
         EditorPrefs.SetString("CIBuild_OutputPath",  _outputPath);
-        EditorPrefs.SetInt("CIBuild_Platform",       (int)_platform);
+        EditorPrefs.SetInt("CIBuild_Platform",        (int)_platform);
+        EditorPrefs.SetInt("CIBuild_ServerOs",        (int)_serverOs);
         EditorPrefs.SetString("CIBuild_SshHost",    _sshHost);
         EditorPrefs.SetString("CIBuild_SshUser",    _sshUser);
         EditorPrefs.SetString("CIBuild_SshKeyPath", _sshKeyPath);
@@ -117,8 +122,9 @@ public class CIBuildWindow : EditorWindow
 
         EditorGUI.indentLevel++;
 
-        _sshHost = EditorGUILayout.TextField("Host (IP)", _sshHost);
-        _sshUser = EditorGUILayout.TextField("User",      _sshUser);
+        _serverOs = (ServerOS)EditorGUILayout.EnumPopup("서버 OS", _serverOs);
+        _sshHost  = EditorGUILayout.TextField("Host (IP)", _sshHost);
+        _sshUser  = EditorGUILayout.TextField("User",      _sshUser);
 
         using (new EditorGUILayout.HorizontalScope())
         {
@@ -161,7 +167,13 @@ public class CIBuildWindow : EditorWindow
 
         var    pkg         = PackageInfo.FindForAssembly(typeof(CIBuildWindow).Assembly);
         string buildSh     = Path.Combine(pkg.resolvedPath, "Shell", "build.sh");
-        string platformArg = _platform == Platform.Android ? "android" : "ios";
+        string platformArg = _platform switch
+        {
+            Platform.Android => "android",
+            Platform.iOS     => "ios",
+            Platform.Windows => "windows",
+            _                => "android",
+        };
 
         AppendLog($"[CI] Script: {buildSh}");
 
@@ -177,13 +189,17 @@ public class CIBuildWindow : EditorWindow
                               $"export PLATFORM={BashQuote(platformArg)}\n" +
                               $"export BRANCH={BashQuote(_branch)}\n" +
                               $"export USER_ID={BashQuote(_userId)}\n" +
+                              $"export SERVER_OS={BashQuote(_serverOs == ServerOS.Windows ? "windows" : "mac")}\n" +
                               $"export TEMPLATE_PATH=/tmp/ci_BuildScript.cs.template\n" +
                               $"cat > /tmp/ci_BuildScript.cs.template << 'CI_TEMPLATE_EOF'\n" +
                               templateContent + "\n" +
                               "CI_TEMPLATE_EOF\n";
 
-        string keyArg = string.IsNullOrWhiteSpace(_sshKeyPath) ? "" : $"-i \"{_sshKeyPath}\" ";
-        string sshArgs = $"{keyArg}-o StrictHostKeyChecking=no {_sshUser}@{_sshHost} \"bash -s\"";
+        string keyArg      = string.IsNullOrWhiteSpace(_sshKeyPath) ? "" : $"-i \"{_sshKeyPath}\" ";
+        string remoteShell = _serverOs == ServerOS.Windows
+            ? "\"\\\"C:\\\\Program Files\\\\Git\\\\bin\\\\bash.exe\\\" -s\""
+            : "\"bash -s\"";
+        string sshArgs = $"{keyArg}-o StrictHostKeyChecking=no {_sshUser}@{_sshHost} {remoteShell}";
 
         var psi = new ProcessStartInfo
         {

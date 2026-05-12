@@ -46,8 +46,14 @@ public static class BuildScript
                 options.locationPathName = Path.Combine(output, "iOS", "build");
                 break;
 
+            case "windows":
+                Directory.CreateDirectory(Path.Combine(output, "Windows"));
+                options.target      = BuildTarget.StandaloneWindows64;
+                options.locationPathName = Path.Combine(output, "Windows", "build.exe");
+                break;
+
             default:
-                Console.WriteLine($"[BuildScript] ERROR: Unknown platform '{platform}'. Use 'android' or 'ios'.");
+                Console.WriteLine($"[BuildScript] ERROR: Unknown platform '{platform}'. Use 'android', 'ios', or 'windows'.");
                 EditorApplication.Exit(1);
                 return;
         }

@@ -45,7 +45,13 @@ if [[ ! -f "$VERSION_FILE" ]]; then
 fi
 
 UNITY_VERSION=$(grep "m_EditorVersion:" "$VERSION_FILE" | awk '{print $2}' | tr -d '\r')
-UNITY_BIN="/Applications/Unity/Hub/Editor/$UNITY_VERSION/Unity.app/Contents/MacOS/Unity"
+
+SERVER_OS="${SERVER_OS:-mac}"
+if [[ "$SERVER_OS" == "windows" ]]; then
+    UNITY_BIN="C:/Program Files/Unity/Hub/Editor/$UNITY_VERSION/Editor/Unity.exe"
+else
+    UNITY_BIN="/Applications/Unity/Hub/Editor/$UNITY_VERSION/Unity.app/Contents/MacOS/Unity"
+fi
 
 if [[ ! -f "$UNITY_BIN" ]]; then
     echo "[CI] ERROR: Unity $UNITY_VERSION not found at $UNITY_BIN"
