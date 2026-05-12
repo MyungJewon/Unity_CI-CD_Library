@@ -19,6 +19,14 @@ fi
 echo "[CI] git fetch origin..."
 git -C "$PROJECT_PATH" fetch origin
 
+# Local changes check — reset before pull to ensure clean state
+if [[ -n "$(git -C "$PROJECT_PATH" status --porcelain)" ]]; then
+    echo "[CI] Local changes detected — resetting to clean state..."
+    git -C "$PROJECT_PATH" reset --hard HEAD
+    git -C "$PROJECT_PATH" clean -fd
+    echo "[CI] Reset complete."
+fi
+
 LOCAL=$(git -C "$PROJECT_PATH" rev-parse "$BRANCH")
 REMOTE=$(git -C "$PROJECT_PATH" rev-parse "origin/$BRANCH")
 
