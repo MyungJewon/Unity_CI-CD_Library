@@ -24,6 +24,7 @@ public class CIBuildWindow : EditorWindow
     string _sshUser         = "";
     string _sshKeyPath      = "";
 
+    string   _userId      = "";
     string   _branch      = "main";
     string[] _branches    = { "main" };
     int      _branchIndex = 0;
@@ -40,6 +41,7 @@ public class CIBuildWindow : EditorWindow
         _sshHost    = EditorPrefs.GetString("CIBuild_SshHost",    "");
         _sshUser    = EditorPrefs.GetString("CIBuild_SshUser",    "");
         _sshKeyPath = EditorPrefs.GetString("CIBuild_SshKeyPath", "");
+        _userId     = EditorPrefs.GetString("CIBuild_UserId",     "");
         _branch     = EditorPrefs.GetString("CIBuild_Branch",     "main");
     }
 
@@ -51,6 +53,7 @@ public class CIBuildWindow : EditorWindow
         EditorPrefs.SetString("CIBuild_SshHost",    _sshHost);
         EditorPrefs.SetString("CIBuild_SshUser",    _sshUser);
         EditorPrefs.SetString("CIBuild_SshKeyPath", _sshKeyPath);
+        EditorPrefs.SetString("CIBuild_UserId",     _userId);
         EditorPrefs.SetString("CIBuild_Branch",     _branch);
     }
 
@@ -64,6 +67,7 @@ public class CIBuildWindow : EditorWindow
         DrawSshSettings();
         EditorGUILayout.Space(5);
 
+        _userId = EditorGUILayout.TextField("사용자 ID", _userId);
         DrawPathField("Build 프로젝트", ref _projectPath);
         DrawPathField("Build 출력 폴더", ref _outputPath);
 
@@ -161,23 +165,37 @@ public class CIBuildWindow : EditorWindow
 
         AppendLog($"[CI] Script: {buildSh}");
 
-        string scriptHeader = $"export PROJECT_PATH={BashQuote(_projectPath)}\n" +
+        string templatePath    = Path.Combine(pkg.resolvedPath, "Templates", "BuildScript.cs.template");
+        string templateContent = File.ReadAllText(templatePath);
+
+        // 템플릿 파일을 Mac Mini의 /tmp에 직접 기록한 뒤 경로를 환경변수로 전달
+        // bash -s 실행 시 $0이 스크립트 경로가 아니라 dirname을 사용할 수 없기 때문
+        string scriptHeader = $"export LANG=en_US.UTF-8\n" +
+                              $"export LC_ALL=en_US.UTF-8\n" +
+                              $"export PROJECT_PATH={BashQuote(_projectPath)}\n" +
                               $"export OUTPUT_PATH={BashQuote(_outputPath)}\n" +
                               $"export PLATFORM={BashQuote(platformArg)}\n" +
-                              $"export BRANCH={BashQuote(_branch)}\n";
+                              $"export BRANCH={BashQuote(_branch)}\n" +
+                              $"export USER_ID={BashQuote(_userId)}\n" +
+                              $"export TEMPLATE_PATH=/tmp/ci_BuildScript.cs.template\n" +
+                              $"cat > /tmp/ci_BuildScript.cs.template << 'CI_TEMPLATE_EOF'\n" +
+                              templateContent + "\n" +
+                              "CI_TEMPLATE_EOF\n";
 
         string keyArg = string.IsNullOrWhiteSpace(_sshKeyPath) ? "" : $"-i \"{_sshKeyPath}\" ";
         string sshArgs = $"{keyArg}-o StrictHostKeyChecking=no {_sshUser}@{_sshHost} \"bash -s\"";
 
         var psi = new ProcessStartInfo
         {
-            FileName               = "ssh",
-            Arguments              = sshArgs,
-            UseShellExecute        = false,
-            RedirectStandardInput  = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError  = true,
-            CreateNoWindow         = true,
+            FileName                = "ssh",
+            Arguments               = sshArgs,
+            UseShellExecute         = false,
+            RedirectStandardInput   = true,
+            RedirectStandardOutput  = true,
+            RedirectStandardError   = true,
+            CreateNoWindow          = true,
+            StandardOutputEncoding  = System.Text.Encoding.UTF8,
+            StandardErrorEncoding   = System.Text.Encoding.UTF8,
         };
 
         var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
@@ -264,6 +282,12 @@ public class CIBuildWindow : EditorWindow
         if (string.IsNullOrWhiteSpace(_sshUser))
         {
             AppendLog("[CI] ERROR: SSH User를 입력하세요.");
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(_userId))
+        {
+            AppendLog("[CI] ERROR: 사용자 ID를 입력하세요.");
             return false;
         }
 

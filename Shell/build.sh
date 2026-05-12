@@ -1,65 +1,46 @@
 #!/bin/bash
-# Unity 프로젝트를 batchmode로 빌드하는 스크립트
-# 실행 흐름: 인자 파싱 → Unity 버전 감지 → BuildScript.cs 주입 → 빌드 → 정리
-
-# 에러 발생 시 즉시 중단 (set -e)
-# 미정의 변수 사용 시 에러 (set -u)
-# 파이프 중간 실패도 감지 (set -o pipefail)
 set -euo pipefail
 
-# ── 변수 확인 ──────────────────────────────────────────────────────────────────
-# 변수는 CIBuildWindow.cs가 스크립트 앞에 export 구문으로 주입함
+# ── Variable check ─────────────────────────────────────────────────────────────
 BRANCH="${BRANCH:-main}"
+USER_ID="${USER_ID:-unknown}"
 
 if [[ -z "${PROJECT_PATH:-}" || -z "${OUTPUT_PATH:-}" || -z "${PLATFORM:-}" ]]; then
-    echo "[CI] ERROR: PROJECT_PATH, OUTPUT_PATH, PLATFORM 이 설정되지 않았습니다."
+    echo "[CI] ERROR: PROJECT_PATH, OUTPUT_PATH, PLATFORM are not set."
     exit 1
 fi
 
-# ── git 동기화 ─────────────────────────────────────────────────────────────────
+# ── Git sync ───────────────────────────────────────────────────────────────────
 if [[ ! -d "$PROJECT_PATH/.git" ]]; then
-    echo "[CI] ERROR: $PROJECT_PATH 는 git 저장소가 아닙니다."
+    echo "[CI] ERROR: $PROJECT_PATH is not a git repository."
     exit 1
 fi
 
 echo "[CI] git fetch origin..."
 git -C "$PROJECT_PATH" fetch origin
 
-LOCAL=$(git  -C "$PROJECT_PATH" rev-parse "$BRANCH")
+LOCAL=$(git -C "$PROJECT_PATH" rev-parse "$BRANCH")
 REMOTE=$(git -C "$PROJECT_PATH" rev-parse "origin/$BRANCH")
 
 if [[ "$LOCAL" != "$REMOTE" ]]; then
-    echo "[CI] 변경사항 감지 — git pull origin $BRANCH"
+    echo "[CI] Changes detected — git pull origin $BRANCH"
     git -C "$PROJECT_PATH" pull origin "$BRANCH"
 else
-    echo "[CI] 이미 최신 상태입니다 ($BRANCH)"
+    echo "[CI] Already up to date ($BRANCH)"
 fi
 
-# ── Unity 버전 감지 ────────────────────────────────────────────────────────────
-# Unity 프로젝트는 ProjectSettings/ProjectVersion.txt에 사용 버전을 기록함
-# 예시 내용:
-#   m_EditorVersion: 6000.4.0f1
-#   m_EditorVersionWithRevision: 6000.4.0f1 (...)
+# ── Detect Unity version ───────────────────────────────────────────────────────
 VERSION_FILE="$PROJECT_PATH/ProjectSettings/ProjectVersion.txt"
 if [[ ! -f "$VERSION_FILE" ]]; then
     echo "[CI] ERROR: ProjectVersion.txt not found at $VERSION_FILE"
     exit 1
 fi
 
-# grep으로 버전 줄 추출 → awk로 두 번째 필드(버전 문자열)만 가져옴
-# tr -d '\r' : Windows에서 생성된 파일의 캐리지 리턴(\r) 제거
 UNITY_VERSION=$(grep "m_EditorVersion:" "$VERSION_FILE" | awk '{print $2}' | tr -d '\r')
-
-# ── Unity 실행 파일 경로 구성 ──────────────────────────────────────────────────
-# ※ 주의: 아래 경로는 Mac + Unity Hub 기본 설치 환경에서만 유효함
-#   - Mac 기본값 : /Applications/Unity/Hub/Editor/{버전}/Unity.app/Contents/MacOS/Unity
-#   - Windows    : C:\Program Files\Unity\Hub\Editor\{버전}\Editor\Unity.exe
-#   - 커스텀 경로에 Unity를 설치했다면 아래 경로를 직접 수정해야 함
 UNITY_BIN="/Applications/Unity/Hub/Editor/$UNITY_VERSION/Unity.app/Contents/MacOS/Unity"
 
 if [[ ! -f "$UNITY_BIN" ]]; then
     echo "[CI] ERROR: Unity $UNITY_VERSION not found at $UNITY_BIN"
-    echo "[CI] Unity Hub의 설치 경로를 확인하거나 build.sh의 UNITY_BIN 경로를 수정하세요."
     exit 1
 fi
 
@@ -68,13 +49,8 @@ echo "[CI] Project       : $PROJECT_PATH"
 echo "[CI] Output        : $OUTPUT_PATH"
 echo "[CI] Platform      : $PLATFORM"
 
-# ── BuildScript.cs 주입 ────────────────────────────────────────────────────────
-# BuildScript.cs.template은 CIEditor/Assets/ 에 영구 보관되는 원본
-# 빌드 시 CIBuildTarget의 Assets/Editor/ 에 복사(주입)하고, 빌드 후 삭제함
-# Unity는 Assets/Editor/ 안의 스크립트를 에디터 전용으로 인식함
-# build.sh는 Shell/ 에 위치하므로 한 단계 위가 패키지 루트
-TEMPLATE_DIR="$(cd "$(dirname "$0")/.." && pwd)/Templates"
-TEMPLATE="$TEMPLATE_DIR/BuildScript.cs.template"
+# ── Inject BuildScript.cs ──────────────────────────────────────────────────────
+TEMPLATE="$TEMPLATE_PATH"
 
 if [[ ! -f "$TEMPLATE" ]]; then
     echo "[CI] ERROR: BuildScript.cs.template not found at $TEMPLATE"
@@ -83,17 +59,13 @@ fi
 
 EDITOR_DIR="$PROJECT_PATH/Assets/Editor"
 INJECT_CS="$EDITOR_DIR/BuildScript.cs"
-INJECT_META="$INJECT_CS.meta"  # Unity가 스크립트 임포트 시 자동 생성하는 메타파일
+INJECT_META="$INJECT_CS.meta"
 
-# Assets/Editor 폴더가 없으면 생성
 mkdir -p "$EDITOR_DIR"
-# 원본 템플릿을 빌드 대상 프로젝트에 복사
 cp "$TEMPLATE" "$INJECT_CS"
 echo "[CI] Injected BuildScript.cs -> $INJECT_CS"
 
-# ── 정리 트랩 ──────────────────────────────────────────────────────────────────
-# trap ... EXIT : 스크립트가 종료될 때 (성공·실패·크래시 모두) 반드시 실행됨
-# 빌드 중 강제 종료되더라도 주입한 파일이 프로젝트에 남지 않도록 보장
+# ── Cleanup trap ───────────────────────────────────────────────────────────────
 cleanup() {
     echo "[CI] Cleaning up injected files..."
     rm -f "$INJECT_CS" "$INJECT_META"
@@ -101,15 +73,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ── 유저 서브폴더 적용 ─────────────────────────────────────────────────────────
-# 빌드 결과물을 OUTPUT_PATH/<username>/ 아래에 격리
-OUTPUT_PATH="$OUTPUT_PATH/$USER"
+# ── Output subfolder: <USER_ID>_<timestamp> ────────────────────────────────────
+BUILD_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+OUTPUT_PATH="$OUTPUT_PATH/${USER_ID}_${BUILD_TIMESTAMP}"
 mkdir -p "$OUTPUT_PATH"
-echo "[CI] 출력 경로: $OUTPUT_PATH"
+echo "[CI] Build output : $OUTPUT_PATH"
 
-# ── 로그 디렉터리 생성 ─────────────────────────────────────────────────────────
-# 빌드 로그를 플랫폼별로 분리해 저장
-# 예: output/<username>/Logs/android_build.log
+# ── Log directory ──────────────────────────────────────────────────────────────
 LOG_DIR="$OUTPUT_PATH/Logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/${PLATFORM}_build.log"
@@ -117,18 +87,19 @@ LOG_FILE="$LOG_DIR/${PLATFORM}_build.log"
 # ── Unity batchmode 빌드 실행 ──────────────────────────────────────────────────
 echo "[CI] Starting build..."
 
+# set -e 를 잠시 해제 — Unity 실패 시 에러 요약을 출력하기 위해
+set +e
 "$UNITY_BIN" \
-    -batchmode \               # GUI 없이 백그라운드 실행
-    -nographics \              # 그래픽 초기화 생략 (렌더링 불필요)
-    -projectPath "$PROJECT_PATH" \   # 빌드할 Unity 프로젝트 경로
-    -executeMethod BuildScript.Build \  # 주입한 BuildScript.cs의 정적 메서드 호출
-    -platform "$PLATFORM" \    # BuildScript.Build()가 읽는 커스텀 인자
-    -output "$OUTPUT_PATH" \   # BuildScript.Build()가 읽는 커스텀 인자
-    -logFile "$LOG_FILE" \     # Unity 상세 로그를 파일로 저장
-    -quit                      # 빌드 완료 후 Unity 자동 종료
-
-# Unity 종료 코드 저장 (-e 옵션이 있어도 이 변수 참조 전에 종료되지 않도록)
+    -batchmode \
+    -nographics \
+    -projectPath "$PROJECT_PATH" \
+    -executeMethod BuildScript.Build \
+    -platform "$PLATFORM" \
+    -output "$OUTPUT_PATH" \
+    -logFile "$LOG_FILE" \
+    -quit
 EXIT_CODE=$?
+set -e
 
 # ── 결과 출력 ─────────────────────────────────────────────────────────────────
 if [[ $EXIT_CODE -eq 0 ]]; then
