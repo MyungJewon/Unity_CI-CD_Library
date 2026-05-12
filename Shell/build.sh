@@ -7,29 +7,14 @@
 # 파이프 중간 실패도 감지 (set -o pipefail)
 set -euo pipefail
 
-# ── 사용법 출력 ────────────────────────────────────────────────────────────────
-usage() {
-    echo "Usage: $0 -project <path> -output <path> -platform <android|ios>"
+# ── 변수 확인 ──────────────────────────────────────────────────────────────────
+# 변수는 CIBuildWindow.cs가 스크립트 앞에 export 구문으로 주입함
+BRANCH="${BRANCH:-main}"
+
+if [[ -z "${PROJECT_PATH:-}" || -z "${OUTPUT_PATH:-}" || -z "${PLATFORM:-}" ]]; then
+    echo "[CI] ERROR: PROJECT_PATH, OUTPUT_PATH, PLATFORM 이 설정되지 않았습니다."
     exit 1
-}
-
-# ── 인자 파싱 ──────────────────────────────────────────────────────────────────
-PROJECT_PATH=""   # 빌드 대상 Unity 프로젝트 경로 (Mac Mini 로컬 경로)
-OUTPUT_PATH=""    # 빌드 결과물 출력 경로
-PLATFORM=""       # 빌드 플랫폼 (android | ios)
-BRANCH="main"     # 동기화할 git 브랜치 (기본값: main)
-
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -project)  PROJECT_PATH="$2"; shift 2 ;;
-        -output)   OUTPUT_PATH="$2";  shift 2 ;;
-        -platform) PLATFORM="$2";     shift 2 ;;
-        -branch)   BRANCH="$2";       shift 2 ;;
-        *) usage ;;
-    esac
-done
-
-[[ -z "$PROJECT_PATH" || -z "$OUTPUT_PATH" || -z "$PLATFORM" ]] && usage
+fi
 
 # ── git 동기화 ─────────────────────────────────────────────────────────────────
 if [[ ! -d "$PROJECT_PATH/.git" ]]; then

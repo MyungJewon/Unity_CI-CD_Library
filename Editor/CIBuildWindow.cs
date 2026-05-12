@@ -159,19 +159,15 @@ public class CIBuildWindow : EditorWindow
         string buildSh     = Path.Combine(pkg.resolvedPath, "Shell", "build.sh");
         string platformArg = _platform == Platform.Android ? "android" : "ios";
 
-        string keyArg = string.IsNullOrWhiteSpace(_sshKeyPath)
-            ? ""
-            : $"-i \"{_sshKeyPath}\" ";
+        AppendLog($"[CI] Script: {buildSh}");
 
-        // build.sh를 Mac Mini에 설치하지 않고, 개발 PC의 파일을 stdin으로 전송해 실행
-        // bash -s : stdin을 스크립트로 읽음 / -- : 이후 인자를 $1 $2 ... 로 전달
-        string sshArgs = $"{keyArg}-o StrictHostKeyChecking=no " +
-                         $"{_sshUser}@{_sshHost} " +
-                         $"bash -s -- " +
-                         $"-project \"{_projectPath}\" " +
-                         $"-output \"{_outputPath}\" " +
-                         $"-platform {platformArg} " +
-                         $"-branch \"{_branch}\"";
+        string scriptHeader = $"export PROJECT_PATH={BashQuote(_projectPath)}\n" +
+                              $"export OUTPUT_PATH={BashQuote(_outputPath)}\n" +
+                              $"export PLATFORM={BashQuote(platformArg)}\n" +
+                              $"export BRANCH={BashQuote(_branch)}\n";
+
+        string keyArg = string.IsNullOrWhiteSpace(_sshKeyPath) ? "" : $"-i \"{_sshKeyPath}\" ";
+        string sshArgs = $"{keyArg}-o StrictHostKeyChecking=no {_sshUser}@{_sshHost} \"bash -s\"";
 
         var psi = new ProcessStartInfo
         {
@@ -198,11 +194,14 @@ public class CIBuildWindow : EditorWindow
         };
 
         process.Start();
-        process.StandardInput.Write(File.ReadAllText(buildSh));
+        process.StandardInput.Write(scriptHeader + File.ReadAllText(buildSh));
+        process.StandardInput.Flush();
         process.StandardInput.Close();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
     }
+
+    static string BashQuote(string s) => "'" + s.Replace("'", "'\\''") + "'";
 
     void FetchBranches()
     {
