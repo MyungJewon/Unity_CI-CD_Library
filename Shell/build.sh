@@ -14,22 +14,41 @@ usage() {
 }
 
 # ── 인자 파싱 ──────────────────────────────────────────────────────────────────
-# CIBuildWindow.cs에서 -project / -output / -platform 세 인자를 전달받음
-PROJECT_PATH=""   # 빌드 대상 Unity 프로젝트 경로
+PROJECT_PATH=""   # 빌드 대상 Unity 프로젝트 경로 (Mac Mini 로컬 경로)
 OUTPUT_PATH=""    # 빌드 결과물 출력 경로
 PLATFORM=""       # 빌드 플랫폼 (android | ios)
+BRANCH="main"     # 동기화할 git 브랜치 (기본값: main)
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -project)  PROJECT_PATH="$2"; shift 2 ;;
         -output)   OUTPUT_PATH="$2";  shift 2 ;;
         -platform) PLATFORM="$2";     shift 2 ;;
+        -branch)   BRANCH="$2";       shift 2 ;;
         *) usage ;;
     esac
 done
 
-# 세 인자 중 하나라도 비어있으면 사용법 출력 후 종료
 [[ -z "$PROJECT_PATH" || -z "$OUTPUT_PATH" || -z "$PLATFORM" ]] && usage
+
+# ── git 동기화 ─────────────────────────────────────────────────────────────────
+if [[ ! -d "$PROJECT_PATH/.git" ]]; then
+    echo "[CI] ERROR: $PROJECT_PATH 는 git 저장소가 아닙니다."
+    exit 1
+fi
+
+echo "[CI] git fetch origin..."
+git -C "$PROJECT_PATH" fetch origin
+
+LOCAL=$(git  -C "$PROJECT_PATH" rev-parse "$BRANCH")
+REMOTE=$(git -C "$PROJECT_PATH" rev-parse "origin/$BRANCH")
+
+if [[ "$LOCAL" != "$REMOTE" ]]; then
+    echo "[CI] 변경사항 감지 — git pull origin $BRANCH"
+    git -C "$PROJECT_PATH" pull origin "$BRANCH"
+else
+    echo "[CI] 이미 최신 상태입니다 ($BRANCH)"
+fi
 
 # ── Unity 버전 감지 ────────────────────────────────────────────────────────────
 # Unity 프로젝트는 ProjectSettings/ProjectVersion.txt에 사용 버전을 기록함
@@ -97,9 +116,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# ── 유저 서브폴더 적용 ─────────────────────────────────────────────────────────
+# 빌드 결과물을 OUTPUT_PATH/<username>/ 아래에 격리
+OUTPUT_PATH="$OUTPUT_PATH/$USER"
+mkdir -p "$OUTPUT_PATH"
+echo "[CI] 출력 경로: $OUTPUT_PATH"
+
 # ── 로그 디렉터리 생성 ─────────────────────────────────────────────────────────
 # 빌드 로그를 플랫폼별로 분리해 저장
-# 예: output/Logs/android_build.log, output/Logs/ios_build.log
+# 예: output/<username>/Logs/android_build.log
 LOG_DIR="$OUTPUT_PATH/Logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/${PLATFORM}_build.log"
