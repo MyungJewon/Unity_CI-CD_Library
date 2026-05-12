@@ -1,6 +1,6 @@
 # Unity CI Build
 
-로컬 네트워크의 Mac Mini 빌드 서버에 SSH로 빌드를 요청하는 Unity 에디터 툴입니다. Android / iOS를 지원합니다.
+로컬 네트워크의 빌드 서버/PC에 SSH로 빌드를 요청하는 Unity 에디터 툴입니다. Android / iOS를 지원합니다.
 
 ## 설치
 
@@ -22,7 +22,7 @@
 - v0.0.2: README 추가
 - v0.0.3: SSH 기반 원격 빌드 서버 구조로 전환
 - v0.1.0: 사용자 ID + 빌드 시간 기반 출력 폴더, 로그 영문화
-- v0.1.1: 빌드PC의 빌드 수행정 git reset
+- v0.1.1: 빌드PC의 빌드 수행전 git reset
 
 ## 요구사항
 
@@ -33,6 +33,7 @@
 **Mac Mini (빌드 서버)**
 - Unity Hub + 빌드 대상 Unity 버전 설치 (`/Applications/Unity/Hub/Editor/<version>/`)
 - 빌드할 Unity 프로젝트가 git으로 clone되어 있을 것
+- 빌드할 Unity 프로젝트를 한번은 열어서 library폴더가 정리되어 있을것
 - Android SDK / Xcode (빌드 플랫폼에 따라)
 - GitHub SSH 키 인증 설정 완료 (아래 참고)
 
