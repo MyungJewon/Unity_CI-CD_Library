@@ -1,12 +1,19 @@
 {
   "name": "com.dfunity.ci",
-  "version": "0.1.0",
-  "displayName": "Deepfine Unity CI Build",
-  "description": "Local CI build tool for Unity projects.",
+  "version": "0.1.1",
+  "displayName": "Unity CI Build",
+  "description": "Local CI build tool for Unity projects. Triggers remote builds on a build server via SSH, with automatic git sync.",
   "unity": "6000.0",
+  "unityRelease": "4.0f1",
   "author": {
-    "name": "DFUnity"
+    "name": "Myung",
+    "url": "https://github.com/MyungJewon"
   },
-  "keywords": ["ci", "build", "automation"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MyungJewon/Unity_CI-CD_Library.git"
+  },
+  "changelogUrl": "https://github.com/MyungJewon/Unity_CI-CD_Library/blob/main/README.md",
+  "keywords": ["ci", "build", "automation", "ssh", "android", "ios"],
   "dependencies": {}
 }
