@@ -25,6 +25,7 @@
 - v0.1.1: 빌드PC의 빌드 수행전 git reset
 - v0.1.2: Windows 빌드 서버 지원, Windows(StandaloneWindows64) 플랫폼 추가
 - v0.1.3: OpenXR 첫 실행 시 설정 미로드 문제에 대한 자동 재시도 추가
+- v0.1.4: 빌드시 progressbar노출, 소요시간 추가
 
 ## 요구사항
 

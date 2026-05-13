@@ -1,6 +1,6 @@
 {
   "name": "com.dfunity.ci",
-  "version": "0.1.1",
+  "version": "0.1.4",
   "displayName": "Unity CI Build",
   "description": "Local CI build tool for Unity projects. Triggers remote builds on a build server via SSH, with automatic git sync.",
   "unity": "6000.0",
