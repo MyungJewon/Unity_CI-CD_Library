@@ -1,8 +1,8 @@
 {
   "name": "com.dfunity.ci",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "displayName": "Unity CI Build",
-  "description": "Local CI build tool for Unity projects. Triggers remote builds on a build server via SSH, with automatic git sync.",
+  "description": "Local CI build tool for Unity projects. Triggers remote builds on a Mac or Windows build server via SSH. Supports Android, iOS, and Windows(StandaloneWindows64) platforms. Works on both Mac and Windows dev machines.",
   "unity": "6000.0",
   "author": {
     "name": "Myung",
@@ -13,6 +13,6 @@
     "url": "https://github.com/MyungJewon/Unity_CI-CD_Library.git"
   },
   "changelogUrl": "https://github.com/MyungJewon/Unity_CI-CD_Library/blob/main/README.md",
-  "keywords": ["ci", "build", "automation", "ssh", "android", "ios"],
+  "keywords": ["ci", "build", "automation", "ssh", "android", "ios", "windows"],
   "dependencies": {}
 }

@@ -37,7 +37,18 @@ public class CIBuildWindow : EditorWindow
     float    _buildProgress  = 0f;
     string   _buildStep      = "";
     DateTime _buildStartTime;
+    TimeSpan _buildElapsed   = TimeSpan.Zero;
     double   _lastRepaintTime;
+
+    // 빌드 프로세스 참조 (취소용)
+    Process  _buildProcess   = null;
+
+    // 마지막 빌드 출력 경로 (폴더 열기용)
+    string   _lastOutputPath = "";
+    bool     _lastBuildSucceeded = false;
+
+    // SSH 테스트
+    bool     _isTesting = false;
 
     [MenuItem("Window/CI Build")]
     static void Open() => GetWindow<CIBuildWindow>("CI Build");
@@ -72,7 +83,6 @@ public class CIBuildWindow : EditorWindow
         EditorApplication.update -= OnEditorUpdate;
     }
 
-    // 빌드 중 0.5초마다 Repaint → 소요 시간 실시간 갱신
     void OnEditorUpdate()
     {
         if (_isBuilding && EditorApplication.timeSinceStartup - _lastRepaintTime > 0.5)
@@ -114,10 +124,23 @@ public class CIBuildWindow : EditorWindow
 
         EditorGUILayout.Space(8);
 
-        using (new EditorGUI.DisabledScope(_isBuilding))
+        // ── 빌드 / 취소 버튼 ───────────────────────────────────────────────────
+        using (new EditorGUILayout.HorizontalScope())
         {
-            if (GUILayout.Button(_isBuilding ? "빌드 중..." : "Build", GUILayout.Height(32)))
-                StartBuild();
+            using (new EditorGUI.DisabledScope(_isBuilding))
+            {
+                if (GUILayout.Button("Build", GUILayout.Height(32)))
+                    StartBuild();
+            }
+
+            if (_isBuilding)
+            {
+                Color prev = GUI.backgroundColor;
+                GUI.backgroundColor = new Color(1f, 0.4f, 0.4f);
+                if (GUILayout.Button("취소", GUILayout.Height(32), GUILayout.Width(60)))
+                    CancelBuild();
+                GUI.backgroundColor = prev;
+            }
         }
 
         // ── 프로그래스 바 ──────────────────────────────────────────────────────
@@ -128,9 +151,17 @@ public class CIBuildWindow : EditorWindow
             Rect barRect = EditorGUILayout.GetControlRect(false, 24f);
             EditorGUI.ProgressBar(barRect, _buildProgress, _buildStep);
 
-            TimeSpan elapsed = (_isBuilding ? DateTime.Now : _buildStartTime + _buildElapsed) - _buildStartTime;
-            string elapsedStr = $"소요 시간  {(int)elapsed.TotalMinutes:D2}:{elapsed.Seconds:D2}";
-            GUILayout.Label(elapsedStr, EditorStyles.centeredGreyMiniLabel);
+            TimeSpan elapsed = _isBuilding ? DateTime.Now - _buildStartTime : _buildElapsed;
+            GUILayout.Label($"소요 시간  {(int)elapsed.TotalMinutes:D2}:{elapsed.Seconds:D2}",
+                EditorStyles.centeredGreyMiniLabel);
+
+            // 폴더 열기 버튼 — 빌드 성공 후에만 표시
+            if (!_isBuilding && _lastBuildSucceeded && !string.IsNullOrEmpty(_lastOutputPath))
+            {
+                EditorGUILayout.Space(2);
+                if (GUILayout.Button("📂  결과 폴더 열기"))
+                    OpenFolder(_lastOutputPath);
+            }
 
             EditorGUILayout.Space(2);
         }
@@ -171,6 +202,14 @@ public class CIBuildWindow : EditorWindow
             }
         }
 
+        EditorGUILayout.Space(4);
+
+        using (new EditorGUI.DisabledScope(_isTesting || _isBuilding))
+        {
+            if (GUILayout.Button(_isTesting ? "연결 테스트 중..." : "SSH 연결 테스트"))
+                TestSshConnection();
+        }
+
         EditorGUI.indentLevel--;
     }
 
@@ -192,12 +231,14 @@ public class CIBuildWindow : EditorWindow
     {
         if (!Validate()) return;
 
-        _isBuilding      = true;
-        _buildProgress   = 0.05f;
-        _buildStep       = "연결 중...";
-        _buildStartTime  = DateTime.Now;
-        _buildElapsed    = TimeSpan.Zero;
-        _logText         = "";
+        _isBuilding          = true;
+        _lastBuildSucceeded  = false;
+        _lastOutputPath      = "";
+        _buildProgress       = 0.05f;
+        _buildStep           = "연결 중...";
+        _buildStartTime      = DateTime.Now;
+        _buildElapsed        = TimeSpan.Zero;
+        _logText             = "";
 
         AppendLog($"[CI] 빌드 시작 - {_platform}");
         AppendLog($"[CI] 호스트: {_sshUser}@{_sshHost}");
@@ -251,30 +292,106 @@ public class CIBuildWindow : EditorWindow
             StandardErrorEncoding   = System.Text.Encoding.UTF8,
         };
 
+        _buildProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        _buildProcess.OutputDataReceived += (_, e) => { if (e.Data != null) _pendingLines.Enqueue(e.Data); };
+        _buildProcess.ErrorDataReceived  += (_, e) => { if (e.Data != null) _pendingLines.Enqueue("[ERR] " + e.Data); };
+        _buildProcess.Exited += (_, __) =>
+        {
+            int code = _buildProcess.ExitCode;
+            if (code == 0)
+            {
+                _pendingLines.Enqueue("[CI] 빌드 성공!");
+                _lastBuildSucceeded = true;
+            }
+            else
+            {
+                _pendingLines.Enqueue($"[CI] 빌드 실패 (exit {code})");
+            }
+            _buildElapsed = DateTime.Now - _buildStartTime;
+            _isBuilding   = false;
+            _buildProcess.Dispose();
+            _buildProcess = null;
+        };
+
+        _buildProcess.Start();
+        _buildProcess.StandardInput.Write(scriptHeader + File.ReadAllText(buildSh));
+        _buildProcess.StandardInput.Flush();
+        _buildProcess.StandardInput.Close();
+        _buildProcess.BeginOutputReadLine();
+        _buildProcess.BeginErrorReadLine();
+    }
+
+    void CancelBuild()
+    {
+        try { _buildProcess?.Kill(); } catch { }
+        _buildProcess       = null;
+        _isBuilding         = false;
+        _buildElapsed       = DateTime.Now - _buildStartTime;
+        _buildProgress      = 0f;
+        _buildStep          = "";
+        _lastBuildSucceeded = false;
+        AppendLog("[CI] 빌드가 취소되었습니다.");
+    }
+
+    void TestSshConnection()
+    {
+        if (string.IsNullOrWhiteSpace(_sshHost) || string.IsNullOrWhiteSpace(_sshUser))
+        {
+            AppendLog("[CI] ERROR: Host와 User를 입력한 뒤 테스트하세요.");
+            return;
+        }
+
+        _isTesting = true;
+        AppendLog($"[CI] SSH 연결 테스트 중... ({_sshUser}@{_sshHost})");
+
+        string keyArg = string.IsNullOrWhiteSpace(_sshKeyPath) ? "" : $"-i \"{_sshKeyPath}\" ";
+        string args   = $"{keyArg}-o StrictHostKeyChecking=no -o ConnectTimeout=5 {_sshUser}@{_sshHost} \"echo CI_OK\"";
+
+        var psi = new ProcessStartInfo
+        {
+            FileName               = "ssh",
+            Arguments              = args,
+            UseShellExecute        = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError  = true,
+            CreateNoWindow         = true,
+        };
+
         var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         process.OutputDataReceived += (_, e) => { if (e.Data != null) _pendingLines.Enqueue(e.Data); };
         process.ErrorDataReceived  += (_, e) => { if (e.Data != null) _pendingLines.Enqueue("[ERR] " + e.Data); };
         process.Exited += (_, __) =>
         {
-            int code = process.ExitCode;
-            _pendingLines.Enqueue(code == 0
-                ? "[CI] 빌드 성공!"
-                : $"[CI] 빌드 실패 (exit {code})");
-            _buildElapsed = DateTime.Now - _buildStartTime;
-            _isBuilding   = false;
+            _pendingLines.Enqueue(process.ExitCode == 0
+                ? "[CI] SSH 연결 성공!"
+                : "[CI] SSH 연결 실패 — Host / User / 키 설정을 확인하세요.");
+            _isTesting = false;
             process.Dispose();
         };
 
         process.Start();
-        process.StandardInput.Write(scriptHeader + File.ReadAllText(buildSh));
-        process.StandardInput.Flush();
-        process.StandardInput.Close();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
     }
 
-    // 빌드 종료 후에도 소요 시간을 고정 표시하기 위해 저장
-    TimeSpan _buildElapsed = TimeSpan.Zero;
+    static void OpenFolder(string path)
+    {
+#if UNITY_EDITOR_WIN
+        Process.Start(new ProcessStartInfo
+        {
+            FileName        = "explorer.exe",
+            Arguments       = path.Replace('/', '\\'),
+            UseShellExecute = false,
+        });
+#else
+        Process.Start(new ProcessStartInfo
+        {
+            FileName        = "open",
+            Arguments       = $"\"{path}\"",
+            UseShellExecute = false,
+        });
+#endif
+    }
 
     static string BashQuote(string s) => "'" + s.Replace("'", "'\\''") + "'";
 
@@ -334,31 +451,26 @@ public class CIBuildWindow : EditorWindow
             AppendLog("[CI] ERROR: SSH Host (IP)를 입력하세요.");
             return false;
         }
-
         if (string.IsNullOrWhiteSpace(_sshUser))
         {
             AppendLog("[CI] ERROR: SSH User를 입력하세요.");
             return false;
         }
-
         if (string.IsNullOrWhiteSpace(_userId))
         {
             AppendLog("[CI] ERROR: 사용자 ID를 입력하세요.");
             return false;
         }
-
         if (string.IsNullOrWhiteSpace(_projectPath))
         {
             AppendLog("[CI] ERROR: 빌드 대상 프로젝트 경로를 입력하세요.");
             return false;
         }
-
         if (string.IsNullOrWhiteSpace(_outputPath))
         {
             AppendLog("[CI] ERROR: 빌드 출력 폴더를 입력하세요.");
             return false;
         }
-
         return true;
     }
 
@@ -394,7 +506,15 @@ public class CIBuildWindow : EditorWindow
         else if (line.Contains("Already up to date"))                            { _buildProgress = 0.28f; _buildStep = "Git 최신 상태"; }
         else if (line.Contains("Unity version :"))                               { _buildProgress = 0.38f; _buildStep = "Unity 버전 감지"; }
         else if (line.Contains("Injected BuildScript"))                          { _buildProgress = 0.48f; _buildStep = "BuildScript 주입"; }
-        else if (line.Contains("Build output :"))                                { _buildProgress = 0.52f; _buildStep = "출력 폴더 준비"; }
+        else if (line.Contains("Build output :"))
+        {
+            _buildProgress  = 0.52f;
+            _buildStep      = "출력 폴더 준비";
+            // "Build output :" 이후 경로를 저장해두어 폴더 열기에 사용
+            int idx = line.IndexOf("Build output :");
+            if (idx >= 0)
+                _lastOutputPath = line.Substring(idx + "Build output :".Length).Trim();
+        }
         else if (line.Contains("Starting build"))                                { _buildProgress = 0.58f; _buildStep = "Unity 빌드 중..."; }
         else if (line.Contains("OpenXR settings not loaded"))                    { _buildProgress = 0.72f; _buildStep = "OpenXR 재시도 중..."; }
         else if (line.Contains("Cleaning up"))                                   { _buildProgress = 0.96f; _buildStep = "정리 중..."; }
