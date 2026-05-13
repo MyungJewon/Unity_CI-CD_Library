@@ -15,7 +15,8 @@
 ```json
 "com.dfunity.ci": "https://github.com/MyungJewon/Unity_CI-CD_Library.git#v0.1.3"
 ```
-
+또는 [Releases](https://github.com/MyungJewon/Unity_CI-CD_Library/releases)에서
+`.tgz` 파일을 다운로드한 뒤 Package Manager → **+** → **Add package from tarball** 로 설치할 수 있습니다.
 ## 버전 특이사항
 
 - v0.0.1: 첫 커밋
